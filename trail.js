@@ -247,7 +247,7 @@ exports.automationProcess=async(req,res)=>{
         },patientName);
         await sleep(2000)
         await page.click('th[data-click-target="true"]');
-        await sleep(10000);
+        await sleep(20000);
         await page.click('#ccmReportDownloadIcon');
         await sleep(2000);
         await page.click('button.button2.buttonOkBackground.btn.btn-primary');
@@ -274,14 +274,9 @@ exports.automationProcess=async(req,res)=>{
         
 
         if (excelRecord || onBoardingExcelRecord) {
-            const excelFilePath = excelRecord ? path.join(DOWNLOAD_PATH, excelRecord) : null;
-            const onboardingFilePath = onBoardingExcelRecord ? path.join(DOWNLOAD_PATH, onBoardingExcelRecord) : null;
-
-            const jsonData1 = excelFilePath ? await convertExcelToJson(excelFilePath, 'Dashboard') : [];
-            const jsonData2 = onboardingFilePath ? await convertExcelToJson2(onboardingFilePath, 'OnBoarding') : [];
-
-            const mergedData = [...jsonData1, ...jsonData2];
-            await saveDataToMongo(mergedData);
+            const excelFilePath = path.join(DOWNLOAD_PATH, excelRecord);
+            const jsonData = await convertExcelToJson(excelFilePath);
+            await saveDataToMongo(jsonData); 
         }
 
         await browser.close();
@@ -289,8 +284,8 @@ exports.automationProcess=async(req,res)=>{
             Status:"True",
             Code:"R-200 Successfully Retrieval",
             message:"All Record Retrieval  successfully",
-            // pdfFile :base64PdfRecord,
-            // excelFile :base64ExcelRecord
+            pdfFile :base64PdfRecord,
+            excelFile :base64ExcelRecord
         })
 
     }catch(error){
@@ -310,18 +305,16 @@ const convertExcelFileToBase64 = async (filePath)=>{
     return base64Data
 }
 
-const convertExcelToJson = async (filePath,fileIdentifier) => {
+const convertExcelToJson = async (filePath) => {
     const workbook = xlsx.readFile(filePath);
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
     const rawData = xlsx.utils.sheet_to_json(worksheet, { header: 1, range: 7 }); 
     const jsonData = []; 
-    const currentDate = new Date();
-
     rawData.forEach((row, rowIndex) => {
         const rowData = {};
         if (row[0]) rowData["Name"] = row[0];
-        if (row[1]) rowData["Enrolling Physician Name"] = row[1];
+        if (row[1]) rowData["EnrollingPhysicianName"] = row[1];
         if (row[2]) rowData["CTMName"] = row[2];
         if (row[3]) rowData["EffortsSpentByDr.AgniPathak"] = row[3];
         if (row[4]) rowData["TotalTimeSpent"] = row[4];
@@ -332,45 +325,7 @@ const convertExcelToJson = async (filePath,fileIdentifier) => {
         if (row[9]) rowData["99439/Check_in_Status"] = row[9];
         if (row[10]) rowData["99439/Billing Readiness"] = row[10];
         if (row[11]) rowData["Notes"] = row[11];
-
-        rowData["FileIdentifier"] = fileIdentifier;
-        rowData["ProcessedDate"] = currentDate.toISOString();
-        if (Object.keys(rowData).length > 0) {
-            jsonData.push(rowData);
-        }
-    });
-    await fs.unlink(filePath);
-
-    return jsonData;
-};
-const convertExcelToJson2 = async (filePath,fileIdentifier) => {
-    const workbook = xlsx.readFile(filePath);
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const rawData = xlsx.utils.sheet_to_json(worksheet, { header: 1, range: 3 }); 
-    const jsonData = []; 
-    const currentDate = new Date();
-
-    rawData.forEach((row, rowIndex) => {
-        const rowData = {};
-        if (row[0]) rowData["Org Name"] = row[0];
-        if (row[1]) rowData["Name"] = row[1];
-        if (row[2]) rowData["DOB"] = row[2];
-        if (row[3]) rowData["Enrolling Physician"] = row[3];
-        if (row[4]) rowData["Program Type"] = row[4];
-        if (row[5]) rowData["Mobile Number"] = row[5];
-        if (row[6]) rowData["Address"] = row[6];
-        if (row[7]) rowData["Shipping Address"] = row[7];
-        if (row[8]) rowData["Address Verified"] = row[8];
-        if (row[9]) rowData["Insurance Details"] = row[9];
-        if (row[10]) rowData["Insurance Covered"] = row[10];
-        if (row[11]) rowData["Insurance Verified"] = row[11];
-        if (row[12]) rowData["Device(Vital)"] = row[12];
-        if (row[13]) rowData["OEM"] = row[13];
-        if (row[14]) rowData["IMEI"] = row[14];
-
-        rowData["FileIdentifier"] = fileIdentifier;
-        rowData["ProcessedDate"] = currentDate.toISOString();
+                     
         if (Object.keys(rowData).length > 0) {
             jsonData.push(rowData);
         }
@@ -381,161 +336,18 @@ const convertExcelToJson2 = async (filePath,fileIdentifier) => {
 };
 
 
-// const saveDataToMongo = async (jsonData1 = [], jsonData2 = []) => {
-//     const client = new MongoClient(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
-
-//     try {
-//         await client.connect();
-//         const db = client.db(dbName);
-//         const collection = db.collection(collectionName);
-
-//         // Validate input data
-//         if (!Array.isArray(jsonData1) || !Array.isArray(jsonData2)) {
-//             throw new Error("Input data is not in the expected array format.");
-//         }
-
-//         // Map for quick lookup of Excel2 data by "Enrolling Physician"
-//         const excel2Map = new Map();
-//         jsonData2.forEach(record => {
-//             if (record["Enrolling Physician"]) {
-//                 excel2Map.set(record["Enrolling Physician"], record);
-//             }
-//         });
-
-//         const mergedData = [];
-
-//         // Merge data based on matching "EnrollingPhysicianName" and "Enrolling Physician"
-//         jsonData1.forEach(record1 => {
-//             const enrollingPhysicianName = record1["Enrolling Physician Name"];
-//             const excel2Record = excel2Map.get(enrollingPhysicianName);
-
-//             if (excel2Record) {
-//                 // Merge data from Excel2 with Excel1, including the new fields
-//                 const mergedRecord = { ...record1 };
-
-//                 // Fields from Excel2 to merge
-//                 if (excel2Record["Program Type"]) mergedRecord["Program Type"] = excel2Record["Program Type"];
-//                 if (excel2Record["Mobile Number"]) mergedRecord["Mobile Number"] = excel2Record["Mobile Number"];
-//                 if (excel2Record["Address"]) mergedRecord["Address"] = excel2Record["Address"];
-//                 if (excel2Record["Shipping Address"]) mergedRecord["Shipping Address"] = excel2Record["Shipping Address"];
-//                 if (excel2Record["Insurance Details"]) mergedRecord["Insurance Details"] = excel2Record["Insurance Details"];
-//                 if (excel2Record["Insurance Covered"]) mergedRecord["Insurance Covered"] = excel2Record["Insurance Covered"];
-//                 if (excel2Record["Insurance Verified"]) mergedRecord["Insurance Verified"] = excel2Record["Insurance Verified"];
-//                 if (excel2Record["Device(Vital)"]) mergedRecord["Device(Vital)"] = excel2Record["Device(Vital)"];
-//                 if (excel2Record["OEM"]) mergedRecord["OEM"] = excel2Record["OEM"];
-//                 if (excel2Record["IMEI"]) mergedRecord["IMEI"] = excel2Record["IMEI"];
-
-//                 // Add merged record to mergedData array
-//                 mergedData.push(mergedRecord);
-//             } else {
-//                 // No match found, include Excel1 data
-//                 mergedData.push(record1);
-//             }
-//         });
-
-//         // Save merged data to MongoDB
-//         for (const record of mergedData) {
-//             const { Name, ...rest } = record;
-
-//             await collection.updateOne(
-//                 { Name },
-//                 {
-//                     $set: { ...rest },
-//                     $push: { MergeHistory: rest.ProcessedDate }
-//                 },
-//                 { upsert: true }
-//             );
-//         }
-
-//         console.log("Merged Excel data saved to MongoDB successfully");
-//     } catch (error) {
-//         console.error("Error saving data to MongoDB:", error);
-//     } finally {
-//         await client.close();
-//     }
-// };
-
-
-
-const saveDataToMongo = async (jsonData1 = [], jsonData2 = []) => {
+const saveDataToMongo = async (jsonData) => {
     const client = new MongoClient(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
 
     try {
         await client.connect();
         const db = client.db(dbName);
         const collection = db.collection(collectionName);
-
-        // Validate input data
-        if (!Array.isArray(jsonData1) || !Array.isArray(jsonData2)) {
-            throw new Error("Input data is not in the expected array format.");
-        }
-
-        // Create a map for quick lookup of Excel2 data by "Enrolling Physician"
-        const excel2Map = new Map();
-        jsonData2.forEach(record => {
-            // if (record["Enrolling Physician"]) {
-            //     excel2Map.set(record["Enrolling Physician"].trim(), record);
-            // }
-            const enrollingPhysician = record["Enrolling Physician"]?.trim().toLowerCase();
-            if (enrollingPhysician) {
-                excel2Map.set(enrollingPhysician, record);
-            }
-        });
-
-        const mergedData = [];
-
-        // Merge data based on matching "EnrollingPhysicianName" and "Enrolling Physician"
-        jsonData1.forEach(record1 => {
-            const enrollingPhysicianName = record1["Enrolling Physician Name"]?.trim().toLowerCase(); // Normalize the field for comparison
-            const excel2Record = excel2Map.get(enrollingPhysicianName);
-
-            if (excel2Record) {
-                // Merge data from Excel2 with Excel1
-                const mergedRecord = { ...record1,...excel2Record };
-
-                // Fields from Excel2 to merge
-                if (excel2Record["Program Type"]) mergedRecord["Program Type"] = excel2Record["Program Type"];
-                if (excel2Record["Mobile Number"]) mergedRecord["Mobile Number"] = excel2Record["Mobile Number"];
-                if (excel2Record["Address"]) mergedRecord["Address"] = excel2Record["Address"];
-                if (excel2Record["Shipping Address"]) mergedRecord["Shipping Address"] = excel2Record["Shipping Address"];
-                if (excel2Record["Insurance Details"]) mergedRecord["Insurance Details"] = excel2Record["Insurance Details"];
-                if (excel2Record["Insurance Covered"]) mergedRecord["Insurance Covered"] = excel2Record["Insurance Covered"];
-                if (excel2Record["Insurance Verified"]) mergedRecord["Insurance Verified"] = excel2Record["Insurance Verified"];
-                if (excel2Record["Device(Vital)"]) mergedRecord["Device(Vital)"] = excel2Record["Device(Vital)"];
-                if (excel2Record["OEM"]) mergedRecord["OEM"] = excel2Record["OEM"];
-                if (excel2Record["IMEI"]) mergedRecord["IMEI"] = excel2Record["IMEI"];
-
-                // Add merged record to mergedData array
-                mergedData.push(mergedRecord);
-            } else {
-                // No match found, include Excel1 data
-                mergedData.push(record1);
-            }
-        });
-
-        // Save merged data to MongoDB
-        for (const record of mergedData) {
-            const { Name, ...rest } = record;
-
-            await collection.updateOne(
-                { Name },
-                {
-                    $set: { ...rest },
-                    $push: { MergeHistory: rest.ProcessedDate }
-                },
-                { upsert: true }
-            );
-        }
-
-        console.log("Merged Excel data saved to MongoDB successfully");
+        await collection.insertMany(jsonData);
+        console.log("Excel data saved to MongoDB in JSON format");
     } catch (error) {
         console.error("Error saving data to MongoDB:", error);
     } finally {
         await client.close();
     }
 };
-
-    
-
-
-
